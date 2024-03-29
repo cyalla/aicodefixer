@@ -10,17 +10,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 def monitor_logs():
     catalina_dir = '/path/to/tomcat/logs'  #TODO
-
+    
     command = f'tail -n 0 -f {catalina_dir}/catalina.out'
 
     while True:
         process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        logging.error("First loop")
 
         try:
             buffer = []
             while True:
-                logging.error("Second loop")
                 line = process.stdout.readline()
                 if re.search(r'^java.*Exception:', line):
                     logging.info(f"Exception detected: {line.strip()}")
@@ -39,19 +37,22 @@ def monitor_logs():
         exception_details = "".join(buffer)
 
         # Trigger Spring Boot API - patch service
-        trigger_devagent_api(exception_details)
+        className, methodName, lineNo = extract_insights_from_log(exception_details)
+        trigger_devagent_api(exception_details, className, methodName, lineNo)
 
         # Wait for a while before restarting the loop
         time.sleep(1)
 
 
-
-#TODO
-def trigger_devagent_api(exception_details):
-    api_url = 'http://localhost:8080/api/trigger'
+def trigger_devagent_api(exception_details, className, methodName, lineNo):
+    #TODO
+    api_url = 'phoenix379618.private4.oaceng02phx.oraclevcn.com/v1/postErrors'
 
     payload = {
-        'exception_details': exception_details
+        'exception_details': exception_details,
+        'className': className,
+        'methodName': methodName,
+        'lineNo': lineNo
     }
 
     response = requests.post(api_url, json=payload)
@@ -65,10 +66,23 @@ def trigger_devagent_api(exception_details):
         logging.error(f"Failed to trigger API. Status code: {response.status_code}")
 
 
-
-#TODO
 def patch_binary_tomcat(new_war_dir):
     old_war_dir = '/dir/to/'
     command = f'cp {new_war_dir}/app.war {old_war_dir}'
 
     os.system(command)
+
+
+def extract_insights_from_log(exception_details):
+    insights = ""
+
+    # Extract className, methodName, and lineNo from exception_details
+    pattern = r"at ([\w\.]+)\.([\w\$]+)\(([\w\.]+)\.java:(\d+)\)"
+    match = re.search(pattern, exception_details)
+
+    if match:
+        className, methodName, fileName, lineNo = match.groups()
+        insights = f"Class: {className}, Method: {methodName}, File: {fileName}, Line: {lineNo}"
+        className = className.split(".")[-1]
+    return className, methodName, lineNo
+
