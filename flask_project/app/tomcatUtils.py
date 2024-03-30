@@ -9,7 +9,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def monitor_logs():
-    catalina_dir = '/path/to/tomcat/logs'  #TODO
+    catalina_dir = '/scratch/cyalla/stage/apache-tomcat-9.0.87/logs'
     
     command = f'tail -n 0 -f {catalina_dir}/catalina.out'
 
@@ -20,7 +20,7 @@ def monitor_logs():
             buffer = []
             while True:
                 line = process.stdout.readline()
-                if re.search(r'^java.*Exception:', line):
+                if re.search(r'^.*Exception:', line):
                     logging.info(f"Exception detected: {line.strip()}")
                     buffer.append(line)
                     for _ in range(15):
@@ -41,11 +41,13 @@ def monitor_logs():
         trigger_devagent_api(exception_details, className, methodName, lineNo)
 
         # Wait for a while before restarting the loop
-        time.sleep(1)
+        # time.sleep(1)
 
 
 def trigger_devagent_api(exception_details, className, methodName, lineNo):
     #TODO
+    exception_details = clean_exception_details(exception_details)
+    
     api_url = 'phoenix379618.private4.oaceng02phx.oraclevcn.com/v1/postErrors'
 
     payload = {
@@ -67,7 +69,7 @@ def trigger_devagent_api(exception_details, className, methodName, lineNo):
 
 
 def patch_binary_tomcat(new_war_dir):
-    old_war_dir = '/dir/to/'
+    old_war_dir = '/scratch/cyalla/stage/apache-tomcat-9.0.87/webapps/'
     command = f'cp {new_war_dir}/app.war {old_war_dir}'
 
     os.system(command)
@@ -75,6 +77,13 @@ def patch_binary_tomcat(new_war_dir):
 
 def extract_insights_from_log(exception_details):
     insights = ""
+
+    match = re.search(r"com\.product\.controller\.(?P<ClassName>\w+)\.(?P<MethodName>\w+)\((?P<FileName>\w+)\.java:(?P<LineNumber>\d+)\)", exception_details)
+    if match:
+        class_name = match.group("ClassName")
+        method_name = match.group("MethodName")
+        file_name = match.group("FileName")
+        line_number = match.group("LineNumber")
 
     # Extract className, methodName, and lineNo from exception_details
     pattern = r"at ([\w\.]+)\.([\w\$]+)\(([\w\.]+)\.java:(\d+)\)"
@@ -86,3 +95,10 @@ def extract_insights_from_log(exception_details):
         className = className.split(".")[-1]
     return className, methodName, lineNo
 
+
+def clean_exception_details(exception_details):
+    lines = exception_details.split("\n")
+    exception_message = lines[0]
+    stack_trace = "\n".join([line.strip() for line in lines[1:]])
+    cleaned_details = f"{exception_message}\n{stack_trace}"
+    return cleaned_details
